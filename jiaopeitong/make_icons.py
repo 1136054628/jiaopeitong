@@ -1,23 +1,36 @@
 # -*- coding: utf-8 -*-
-"""生成「教培通」LOGO 图标（PNG 各尺寸 + 矢量参考）"""
+"""生成「教培通」LOGO 图标（PNG 各尺寸 + 矢量参考）
+配色：蓝色背景（PANTONE 286 C）+ 白色博士帽
+"""
 from PIL import Image, ImageDraw
 import os
 
 BLUE = (0, 51, 160)      # PANTONE 286 C
 WHITE = (255, 255, 255)
-BORDER = (214, 224, 240)
 
-def cap_geom(S):
+def cap_geom(S, scale=1.0):
     cx = S / 2
-    board = [(cx, S*0.19), (cx+S*0.34, S*0.34), (cx, S*0.50), (cx-S*0.34, S*0.34)]
-    skull = [(cx-S*0.17, S*0.33), (cx+S*0.17, S*0.33), (cx+S*0.135, S*0.69), (cx-S*0.135, S*0.69)]
-    ta = (cx+S*0.34, S*0.34)
-    tb = (cx+S*0.34, S*0.60)
-    td = (cx+S*0.34, S*0.66)
+    cy = S / 2
+    m = scale
+    board = [
+        (cx,             cy - S*0.31*m),   # 帽板·顶
+        (cx + S*0.34*m,  cy - S*0.16*m),   # 帽板·右
+        (cx,             cy),              # 帽板·底
+        (cx - S*0.34*m,  cy - S*0.16*m),   # 帽板·左
+    ]
+    skull = [
+        (cx - S*0.17*m,  cy - S*0.17*m),
+        (cx + S*0.17*m,  cy - S*0.17*m),
+        (cx + S*0.135*m, cy + S*0.19*m),
+        (cx - S*0.135*m, cy + S*0.19*m),
+    ]
+    ta = (cx + S*0.34*m, cy - S*0.16*m)
+    tb = (cx + S*0.34*m, cy + S*0.10*m)
+    td = (cx + S*0.34*m, cy + S*0.16*m)
     return board, skull, ta, tb, td
 
-def draw_cap(d, S, color):
-    board, skull, ta, tb, td = cap_geom(S)
+def draw_cap(d, S, color, scale=1.0):
+    board, skull, ta, tb, td = cap_geom(S, scale)
     d.polygon(skull, fill=color)
     d.polygon(board, fill=color)
     d.line([ta, tb], fill=color, width=max(2, int(S*0.016)))
@@ -25,24 +38,25 @@ def draw_cap(d, S, color):
     d.ellipse([td[0]-r, td[1]-r, td[0]+r, td[1]+r], fill=color)
 
 def make_any(size):
+    # 蓝色圆角方块（透明圆角），白色博士帽
     img = Image.new('RGBA', (size, size), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
-    d.rounded_rectangle([1, 1, size-1, size-1], radius=int(size*0.225), fill=WHITE)
-    d.rounded_rectangle([1, 1, size-1, size-1], radius=int(size*0.225), outline=BORDER, width=max(1, int(size*0.006)))
-    draw_cap(d, size, BLUE)
+    d.rounded_rectangle([0, 0, size, size], radius=int(size*0.22), fill=BLUE)
+    draw_cap(d, size, WHITE)
     return img
 
 def make_apple(size):
-    img = Image.new('RGB', (size, size), WHITE)
+    # iOS：满幅蓝底（系统自行加圆角遮罩）
+    img = Image.new('RGB', (size, size), BLUE)
     d = ImageDraw.Draw(img)
-    draw_cap(d, size, BLUE)
+    draw_cap(d, size, WHITE)
     return img
 
 def make_maskable(size):
-    img = Image.new('RGBA', (size, size), (0, 0, 0, 0))
+    # 满幅蓝底，白帽收进安全区（避免被系统裁切）
+    img = Image.new('RGB', (size, size), BLUE)
     d = ImageDraw.Draw(img)
-    d.rounded_rectangle([0, 0, size, size], radius=int(size*0.20), fill=BLUE)
-    draw_cap(d, size, WHITE)
+    draw_cap(d, size, WHITE, scale=0.82)
     return img
 
 out = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'icons')
