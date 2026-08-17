@@ -1,0 +1,60 @@
+// 运行时自检：在 Node 里用轻量 DOM 桩运行 app.js，渲染所有页面/表单/报表
+const fs = require('fs');
+const vm = require('vm');
+
+function makeEl() {
+  return {
+    innerHTML: '', style: {}, dataset: {}, _value: '',
+    classList: { add(){}, remove(){}, toggle(){} },
+    addEventListener(){}, appendChild(){}, remove(){},
+    set value(v){ this._value = v; }, get value(){ return this._value; },
+    closest(){ return null; },
+    querySelector(){ return makeEl(); },
+    querySelectorAll(){ return []; },
+    focus(){},
+  };
+}
+
+const _store = {};
+const sandbox = {
+  document: { addEventListener(){}, querySelector(){ return makeEl(); }, querySelectorAll(){ return []; } },
+  localStorage: { getItem: k => (_store[k] != null ? _store[k] : null), setItem: (k,v)=>{ _store[k]=String(v); }, removeItem: k=>{ delete _store[k]; } },
+  window: null,
+  setTimeout: (fn)=>{}, clearTimeout: ()=>{},
+  Blob: function(){}, URL: { createObjectURL: ()=>{}, revokeObjectURL: ()=>{} },
+  confirm: ()=>{ return true; },
+  console, Date, Math, JSON,
+};
+sandbox.window = sandbox;
+sandbox.self = sandbox;
+vm.createContext(sandbox);
+
+const appSrc = fs.readFileSync(__dirname + '/app.js', 'utf8');
+
+const testCode = `
+;console.log('== render self-check ==');
+const secs = ['home','students','classes','schedule','comms','teachers','import'];
+secs.forEach(sec => {
+  S.section = sec; S.tab = ''; S.sel = null; S.detail = null;
+  try { const h = RENDER[sec](); if (typeof h !== 'string' || !h.length) throw new Error('empty'); console.log('OK  section  ' + sec + '  (' + h.length + ' chars)'); }
+  catch(e){ console.log('FAIL section ' + sec + ' -> ' + e.message); }
+});
+const st = coll.students()[0], tc = coll.teachers()[0], cl = coll.classes()[0];
+try { renderStudentDetail(st.id); console.log('OK  student detail'); } catch(e){ console.log('FAIL student detail -> ' + e.message); }
+try { renderTeacherDetail(tc.id); console.log('OK  teacher detail'); } catch(e){ console.log('FAIL teacher detail -> ' + e.message); }
+try { renderClassDetail(cl.id); console.log('OK  class detail'); } catch(e){ console.log('FAIL class detail -> ' + e.message); }
+S.sel = { kind:'student', id: st.id };
+try { renderSchedule(); console.log('OK  schedule person'); } catch(e){ console.log('FAIL schedule person -> ' + e.message); }
+try { studentForm(st); teacherForm(tc); classForm(cl); consumeForm(st); rechargeForm(st); salaryForm(tc); feeForm(); commForm(); noticeForm(); visitForm(); feedbackForm(); sessionForm(); console.log('OK  all forms'); } catch(e){ console.log('FAIL forms -> ' + e.message); }
+['day','week','month','year'].forEach(p => { S.reportPeriod = p; try { renderReport(); console.log('OK  report ' + p); } catch(e){ console.log('FAIL report ' + p + ' -> ' + e.message); } });
+S.tab = 'consume'; try { renderStudents(); } catch(e){ console.log('FAIL students consume tab -> ' + e.message); }
+S.tab = 'pay'; try { renderTeachers(); } catch(e){ console.log('FAIL teachers pay tab -> ' + e.message); }
+console.log('== done ==');
+`;
+
+try {
+  vm.runInContext(appSrc + '\n' + testCode, sandbox, { filename: 'app.js' });
+} catch (e) {
+  console.log('LOAD FAILURE:', e.message);
+  process.exit(1);
+}
