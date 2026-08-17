@@ -1,5 +1,5 @@
 /* 教培通 Service Worker —— 缓存静态资源，支持离线打开 */
-const CACHE = 'jiaopeitong-v3';
+const CACHE = 'jiaopeitong-v4';
 const ASSETS = [
   './',
   './index.html',
