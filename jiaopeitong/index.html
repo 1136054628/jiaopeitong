@@ -17,13 +17,8 @@
 </head>
 <body>
   <div id="app">
-    <!-- 顶栏：左上角菜单 + LOGO -->
+    <!-- 顶栏：LOGO -->
     <header class="topbar">
-      <button class="icon-btn" id="menuBtn" aria-label="打开侧边栏">
-        <svg viewBox="0 0 24 24" width="22" height="22" fill="none">
-          <path d="M4 6.5h16M4 12h16M4 17.5h16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-        </svg>
-      </button>
       <div class="topbar-brand" id="topbarBrand">
         <span class="brand-mark">
           <svg viewBox="0 0 24 24" width="24" height="24" fill="none">
@@ -40,31 +35,6 @@
         </svg>
       </button>
     </header>
-
-    <!-- 侧边栏遮罩 -->
-    <div class="scrim" id="scrim"></div>
-
-    <!-- 侧边栏 -->
-    <aside class="sidebar" id="sidebar">
-      <div class="sidebar-brand">
-        <span class="brand-mark lg">
-          <svg viewBox="0 0 24 24" width="34" height="34" fill="none">
-            <path d="M12 4 22 8 12 12 2 8Z" fill="#0033A0"/>
-            <path d="M6 10.5v4.2c0 1.2 2.7 2.3 6 2.3s6-1.1 6-2.3v-4.2" stroke="#0033A0" stroke-width="1.4" fill="none" stroke-linecap="round"/>
-            <path d="M22 8v5" stroke="#0033A0" stroke-width="1.4" stroke-linecap="round"/>
-          </svg>
-        </span>
-        <div class="brand-meta">
-          <div class="brand-name">教培通</div>
-          <div class="brand-sub">教培行业工作台</div>
-        </div>
-      </div>
-      <nav class="sidebar-nav" id="sidebarNav"></nav>
-      <div class="sidebar-foot">
-        <div class="mode-chip">📱 本机模式 · 数据保存在此设备</div>
-        <p class="foot-tip">可在「快速导入」里导出 / 备份数据</p>
-      </div>
-    </aside>
 
     <!-- 主内容 -->
     <main class="main" id="main"></main>

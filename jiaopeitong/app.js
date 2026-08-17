@@ -83,77 +83,22 @@ function cName(id){ return classById(id)?.name || '未分班'; }
 function studentClasses(s){ return (s.classIds||[]).map(id=>classById(id)).filter(Boolean); }
 function settings(){ return db.get('settings', {name:'我的教培机构'}); }
 
-/* ---------------- 种子数据 ---------------- */
+/* ---------------- 数据初始化（默认空数据） ---------------- */
+const EMPTY_COLLS = ['students','teachers','classes','consumptions','recharges','salaries','fees','comms','visits','feedbacks','sessions','imports'];
 function seed(){
-  if (localStorage.getItem(P+'seeded')) return;
-  const now = new Date();
-  const st = [
-    {id:'st1', name:'王小明', gender:'男', grade:'三年级', subjects:['数学'], tags:['正式'], phone:'13800001111', parentName:'王先生', parentPhone:'13800001111', remainingHours:12, classIds:['cl1'], enrollDate:daysAgo(120), note:'基础较好，稳定出勤'},
-    {id:'st2', name:'李思雨', gender:'女', grade:'五年级', subjects:['英语'], tags:['续费意向'], phone:'13800002222', parentName:'李女士', parentPhone:'13800002222', remainingHours:3, classIds:['cl2'], enrollDate:daysAgo(90), note:'剩余课时不足，提醒续费'},
-    {id:'st3', name:'张浩然', gender:'男', grade:'初二', subjects:['物理'], tags:['试听'], phone:'13800003333', parentName:'张女士', parentPhone:'13800003333', remainingHours:1, classIds:['cl3'], enrollDate:daysAgo(6), note:'试听学员，需跟进转化'},
-    {id:'st4', name:'陈子涵', gender:'女', grade:'六年级', subjects:['语文'], tags:['正式'], phone:'13800004444', parentName:'陈先生', parentPhone:'13800004444', remainingHours:20, classIds:['cl1'], enrollDate:daysAgo(200), note:''},
-    {id:'st5', name:'刘雨桐', gender:'女', grade:'初二', subjects:['数学'], tags:['正式'], phone:'13800005555', parentName:'刘女士', parentPhone:'13800005555', remainingHours:8, classIds:['cl1'], enrollDate:daysAgo(60), note:''},
-    {id:'st6', name:'赵一诺', gender:'男', grade:'四年级', subjects:['英语'], tags:['试听'], phone:'13800006666', parentName:'赵先生', parentPhone:'13800006666', remainingHours:0, classIds:[], enrollDate:daysAgo(2), note:'课时已用完'},
-  ];
-  const tc = [
-    {id:'t1', name:'王老师', gender:'女', subjects:['数学'], certs:['教师资格证','数学竞赛教练'], teachYears:6, hourlyRate:120, experience:'10年一线教学经验，擅长小初数学', status:'在职', hireDate:daysAgo(1500)},
-    {id:'t2', name:'李老师', gender:'女', subjects:['英语'], certs:['教师资格证','英语专八'], teachYears:4, hourlyRate:100, experience:'少儿英语启蒙', status:'在职', hireDate:daysAgo(900)},
-    {id:'t3', name:'张老师', gender:'男', subjects:['物理','语文'], certs:['教师资格证'], teachYears:8, hourlyRate:150, experience:'中高考冲刺辅导', status:'在职', hireDate:daysAgo(2000)},
-  ];
-  const cl = [
-    {id:'cl1', name:'数学提高班', type:'小班', subject:'数学', teacherId:'t1', schedule:'周六 09:00-10:30', pricePerHour:150, studentIds:['st1','st4','st5'], status:'进行中', startDate:daysAgo(150)},
-    {id:'cl2', name:'英语启蒙班', type:'小班', subject:'英语', teacherId:'t2', schedule:'周日 14:00-15:30', pricePerHour:130, studentIds:['st2'], status:'进行中', startDate:daysAgo(120)},
-    {id:'cl3', name:'一对一物理', type:'一对一', subject:'物理', teacherId:'t3', schedule:'周五 19:00-20:30', pricePerHour:200, studentIds:['st3'], status:'进行中', startDate:daysAgo(6)},
-  ];
-  const consume = [
-    {id:'c1', studentId:'st1', teacherId:'t1', classId:'cl1', hours:2, unitPrice:150, amount:300, date:daysAgo(1), note:''},
-    {id:'c2', studentId:'st4', teacherId:'t1', classId:'cl1', hours:2, unitPrice:150, amount:300, date:daysAgo(1), note:''},
-    {id:'c3', studentId:'st2', teacherId:'t2', classId:'cl2', hours:2, unitPrice:130, amount:260, date:daysAgo(3), note:''},
-    {id:'c4', studentId:'st5', teacherId:'t1', classId:'cl1', hours:1, unitPrice:150, amount:150, date:daysAgo(5), note:'补课'},
-    {id:'c5', studentId:'st1', teacherId:'t1', classId:'cl1', hours:2, unitPrice:150, amount:300, date:daysAgo(8), note:''},
-  ];
-  const recharge = [
-    {id:'r1', studentId:'st1', amount:3000, hours:20, date:daysAgo(100), method:'微信', note:''},
-    {id:'r2', studentId:'st4', amount:3000, hours:20, date:daysAgo(180), method:'支付宝', note:''},
-    {id:'r3', studentId:'st2', amount:1500, hours:10, date:daysAgo(80), method:'现金', note:''},
-    {id:'r4', studentId:'st5', amount:2000, hours:12, date:daysAgo(40), method:'微信', note:''},
-  ];
-  const salary = [
-    {id:'sa1', teacherId:'t1', amount:2400, hours:20, date:daysAgo(15), status:'已结算', note:'上月课酬'},
-    {id:'sa2', teacherId:'t2', amount:1200, hours:12, date:daysAgo(15), status:'已结算', note:'上月课酬'},
-    {id:'sa3', teacherId:'t1', amount:1080, hours:9, date:daysAgo(2), status:'未结算', note:'本月部分课酬'},
-    {id:'sa4', teacherId:'t3', amount:600, hours:4, date:daysAgo(2), status:'未结算', note:'本月部分课酬'},
-  ];
-  const fee = [
-    {id:'f1', studentId:'st1', type:'缴费', amount:3000, date:daysAgo(100), status:'已缴', note:'春季班学费'},
-    {id:'f2', studentId:'st2', type:'续费', amount:1500, date:daysAgo(30), status:'待缴', note:'续费到期预警'},
-    {id:'f3', studentId:'st3', type:'报名', amount:200, date:daysAgo(6), status:'已缴', note:'试听报名'},
-    {id:'f4', studentId:'st2', type:'欠费', amount:500, date:daysAgo(10), status:'欠费', note:'剩余课时欠款'},
-  ];
-  const comm = [
-    {id:'cm1', studentId:'st1', teacherId:'t1', type:'通话', content:'沟通近期学习状态，家长反馈满意', date:daysAgo(2)},
-    {id:'cm2', studentId:'st2', teacherId:'t2', type:'微信', content:'发送续费方案，家长考虑中', date:daysAgo(3)},
-    {id:'cm3', studentId:'st3', teacherId:'t3', type:'面谈', content:'试听后反馈，有意向报名', date:daysAgo(5)},
-  ];
-  const visit = [
-    {id:'v1', studentId:'st2', planDate:daysAgo(-1), status:'待回访', result:'', note:'回访续费意向'},
-    {id:'v2', studentId:'st3', planDate:daysAgo(-2), status:'待回访', result:'', note:'试听转化跟进'},
-    {id:'v3', studentId:'st1', planDate:daysAgo(3), status:'已完成', result:'满意', note:''},
-  ];
-  const feedback = [
-    {id:'fb1', studentId:'st1', title:'建议增加课后练习资料', status:'处理中', date:daysAgo(2), resolution:''},
-    {id:'fb2', studentId:'st4', title:'对上课时间安排的建议', status:'待处理', date:daysAgo(1), resolution:''},
-  ];
-  const session = [
-    {id:'se1', studentId:'st1', teacherId:'t1', classId:'cl1', date:daysAgo(-1), startTime:'09:00', endTime:'10:30', type:'正常', status:'待上', title:'数学提高班'},
-    {id:'se2', studentId:'st2', teacherId:'t2', classId:'cl2', date:daysAgo(-2), startTime:'14:00', endTime:'15:30', type:'正常', status:'待上', title:'英语启蒙班'},
-    {id:'se3', studentId:'st3', teacherId:'t3', classId:'cl3', date:daysAgo(-3), startTime:'19:00', endTime:'20:30', type:'补课', status:'待上', title:'一对一物理补课'},
-  ];
-  db.set('students', st); db.set('teachers', tc); db.set('classes', cl);
-  db.set('consumptions', consume); db.set('recharges', recharge); db.set('salaries', salary);
-  db.set('fees', fee); db.set('comms', comm); db.set('visits', visit); db.set('feedbacks', feedback); db.set('sessions', session);
-  db.set('imports', []); db.set('settings', {name:'我的教培机构'});
-  localStorage.setItem(P+'seeded', '1');
+  // 旧版内置示例数据的残留标志：若存在则清空，保证从空白开始
+  if (localStorage.getItem(P+'seeded')){
+    EMPTY_COLLS.forEach(k => db.set(k, []));
+    db.set('settings', {name:'我的教培机构'});
+    localStorage.removeItem(P+'seeded');
+    return;
+  }
+  // 首次打开：初始化空集合与默认设置
+  if (!localStorage.getItem(P+'inited')){
+    EMPTY_COLLS.forEach(k => db.set(k, []));
+    db.set('settings', {name:'我的教培机构'});
+    localStorage.setItem(P+'inited', '1');
+  }
 }
 
 /* ---------------- 全局状态 ---------------- */
@@ -170,17 +115,6 @@ const SECTIONS = [
 let S = { section:'home', tab:'', recTab:'consume', reportPeriod:'month', statPeriod:'month', view:'student', sel:null, detail:null };
 
 /* ---------------- 骨架渲染 ---------------- */
-function renderSidebar(){
-  $('#sidebarNav').innerHTML = SECTIONS.map(sec => `
-    <div class="side-item ${S.section===sec.key && !S.detail ? 'active':''}" data-nav="${sec.key}">
-      <span class="side-ico">${ICONS[sec.icon]}</span>
-      <span class="side-txt">
-        <div class="side-name">${sec.name}</div>
-        <div class="side-desc">${sec.desc}</div>
-      </span>
-      <span class="side-arrow">${ICONS.chev}</span>
-    </div>`).join('');
-}
 function renderBottomNav(){
   $('#bottomNav').innerHTML = SECTIONS.map(sec => `
     <div class="bn-item ${S.section===sec.key && !S.detail ? 'active':''}" data-nav="${sec.key}">
@@ -199,7 +133,7 @@ function updateTopbar(){
 }
 
 function render(){
-  renderSidebar(); renderBottomNav(); updateTopbar();
+  renderBottomNav(); updateTopbar();
   const main = $('#main');
   if (S.detail){ main.innerHTML = renderDetail(); }
   else { main.innerHTML = RENDER[S.section](); }
@@ -1234,8 +1168,6 @@ const FORMS = {
    动作处理（事件委托）
    ============================================================ */
 const ACTIONS = {
-  'open-menu'(){ $('#sidebar').classList.add('open'); $('#scrim').classList.add('show'); },
-  'close-menu'(){ $('#sidebar').classList.remove('open'); $('#scrim').classList.remove('show'); },
   'close-modal'(){ closeModal(); },
   'confirm-yes'(){ if(_confirmCb){ _confirmCb(true); _confirmCb=null; } closeModal(); },
   'confirm-no'(){ if(_confirmCb){ _confirmCb(false); _confirmCb=null; } closeModal(); },
@@ -1393,7 +1325,7 @@ function afterRender(){
 document.addEventListener('click', (e)=>{
   const el = e.target.closest('[data-action],[data-nav]');
   if (!el) return;
-  if (el.dataset.nav){ S.section=el.dataset.nav; S.tab=''; S.sel=null; S.detail=null; $('#sidebar').classList.remove('open'); $('#scrim').classList.remove('show'); render(); return; }
+  if (el.dataset.nav){ S.section=el.dataset.nav; S.tab=''; S.sel=null; S.detail=null; render(); return; }
   const act = el.dataset.action;
   if (act && ACTIONS[act]) ACTIONS[act](el);
 });
@@ -1424,9 +1356,6 @@ document.addEventListener('submit', (e)=>{
   const name = f.dataset.form;
   if (FORMS[name]) FORMS[name](f);
 }, true);
-
-$('#menuBtn').addEventListener('click', ()=>{ $('#sidebar').classList.add('open'); $('#scrim').classList.add('show'); });
-$('#scrim').addEventListener('click', ()=>{ $('#sidebar').classList.remove('open'); $('#scrim').classList.remove('show'); });
 
 seed();
 render();

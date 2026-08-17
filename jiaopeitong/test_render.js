@@ -39,6 +39,10 @@ secs.forEach(sec => {
   try { const h = RENDER[sec](); if (typeof h !== 'string' || !h.length) throw new Error('empty'); console.log('OK  section  ' + sec + '  (' + h.length + ' chars)'); }
   catch(e){ console.log('FAIL section ' + sec + ' -> ' + e.message); }
 });
+// 应用默认以空数据启动，注入一条测试数据以校验详情页与表单渲染
+db.set('students', [{id:'tst', name:'测试学生', gender:'男', grade:'三年级', subjects:['数学'], tags:['正式'], phone:'13000000000', parentName:'测试家长', parentPhone:'13000000000', remainingHours:5, classIds:['tcl'], enrollDate:daysAgo(3), note:''}]);
+db.set('teachers', [{id:'tt1', name:'测试老师', gender:'女', subjects:['数学'], certs:['教师资格证'], teachYears:2, hourlyRate:100, experience:'测试', status:'在职', hireDate:daysAgo(100)}]);
+db.set('classes', [{id:'tcl', name:'测试班级', type:'小班', subject:'数学', teacherId:'tt1', schedule:'周六 09:00', pricePerHour:100, studentIds:['tst'], status:'进行中', startDate:daysAgo(10)}]);
 const st = coll.students()[0], tc = coll.teachers()[0], cl = coll.classes()[0];
 try { renderStudentDetail(st.id); console.log('OK  student detail'); } catch(e){ console.log('FAIL student detail -> ' + e.message); }
 try { renderTeacherDetail(tc.id); console.log('OK  teacher detail'); } catch(e){ console.log('FAIL teacher detail -> ' + e.message); }
