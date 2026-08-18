@@ -83,6 +83,16 @@ function tName(id){ return teacherById(id)?.name || '未指定'; }
 function cName(id){ return classById(id)?.name || '未分班'; }
 function studentClasses(s){ return (s.classIds||[]).map(id=>classById(id)).filter(Boolean); }
 function settings(){ return db.get('settings', {name:'我的教培机构'}); }
+function teacherRates(t){ return (t.rates||[]).filter(r=>r.rate>0); }
+function rateOf(t, subject){
+  const rs = teacherRates(t);
+  if (!rs.length) return 0;
+  if (subject){ const m = rs.find(r=>r.subject===subject); if (m) return m.rate; }
+  return rs[0].rate;
+}
+function expectedPay(t){
+  return sum(coll.consumptions().filter(c=>c.teacherId===t.id), c => (c.hours||0) * rateOf(t, studentById(c.studentId)?.subjects?.[0] || ''));
+}
 
 /* ---------------- 数据初始化（默认空数据） ---------------- */
 const EMPTY_COLLS = ['students','teachers','classes','consumptions','recharges','salaries','fees','comms','notices','visits','feedbacks','sessions','imports','evaluations'];
@@ -106,14 +116,12 @@ function seed(){
 const SECTIONS = [
   {key:'home', name:'工作台首页', short:'首页', icon:'home', desc:'学生 · 老师 · 记录 · 报表'},
   {key:'students', name:'学生管理', short:'学生', icon:'students', desc:'档案 · 消课 · 费用 · 课时'},
-  {key:'teachers', name:'老师管理', short:'老师', icon:'teachers', desc:'档案 · 薪酬 · 评估 · 课时'},
-  {key:'classes', name:'班级管理', short:'班级', icon:'classes', desc:'名册 · 运营 · 结课'},
-  {key:'schedule', name:'课表', short:'课表', icon:'schedule', desc:'多维课表 · 排课调课'},
-  {key:'import', name:'快速导入', short:'导入', icon:'import', desc:'数据导入 · 备份数据'},
+  {key:'teachers', name:'老师管理', short:'老师', icon:'teachers', desc:'档案 · 薪酬 · 课时'},
+  {key:'schedule', name:'课表', short:'课表', icon:'schedule', desc:'学生课表 · 教师课表 · 排课'},
 ];
 
 let S = { section:'home', tab:'', recTab:'consume', reportPeriod:'month', statPeriod:'all', view:'student', sel:null, detail:null };
-const DEFAULT_TAB = { students:'roster', teachers:'roster', classes:'roster', schedule:'multi', import:'do' };
+const DEFAULT_TAB = { students:'roster', teachers:'roster', schedule:'multi' };
 
 /* ---------------- 骨架渲染 ---------------- */
 function renderBottomNav(){
@@ -128,7 +136,7 @@ function updateTopbar(){
   $('#topbarBrand').style.visibility = S.detail ? 'hidden' : 'visible';
   const act = $('#topbarAction');
   if (S.detail){ act.style.visibility='hidden'; return; }
-  const quickAdd = {students:'add-student', teachers:'add-teacher', classes:'add-class', schedule:'add-session'}[S.section];
+  const quickAdd = {students:'add-student', teachers:'add-teacher', schedule:'add-session'}[S.section];
   if (quickAdd){ act.style.visibility='visible'; act.dataset.action = quickAdd; act.innerHTML = ICONS.plus; }
   else { act.style.visibility='hidden'; }
 }
@@ -158,7 +166,7 @@ function tagChips(tags){
   const map = {'试听':'amber','正式':'green','续费意向':'blue','欠费':'red','待缴':'amber','已缴':'green','待回访':'amber','已完成':'green','已取消':'gray','待处理':'amber','处理中':'blue','已结案':'green','待上':'blue','已上':'green','已取消':'gray','未结算':'amber','已结算':'green','正常':'gray','调课':'blue','补课':'amber','在职':'green','离职':'gray','进行中':'green','已结课':'gray'};
   return (tags||[]).map(t=>`<span class="chip ${map[t]||'gray'}">${esc(t)}</span>`).join('');
 }
-function backRow(label, action){ return `<button class="row gap-8 mb-12" data-action="${action}" style="color:var(--ink-2);font-weight:600;">${ICONS.back}${label}</button>`; }
+function backRow(label, action){ return `<button class="back-btn" data-action="${action}">${ICONS.back}<span>${label}</span></button>`; }
 
 function avatarHtml(id, name, size){ return `<span class="li-avatar" style="width:${size||44}px;height:${size||44}px;font-size:${(size||44)*0.38}px;background:${avColor(name)}">${esc(initial(name))}</span>`; }
 
@@ -170,12 +178,12 @@ function renderHome(){
   const lowH = st.filter(s=>s.remainingHours<=3 && s.remainingHours>0).length;
 
   const stuCards = st.length ? `<div class="card-scroll">${st.map(s=>{
-    const tip = s.remainingHours<=0 ? '课时已用完，请续费' : s.remainingHours<=3 ? '剩余课时不足，及时续费' : s.tags.includes('试听') ? '试听学员，跟进转化' : '状态正常，继续加油';
+    const tip = s.remainingHours<=0 ? '课时已用完，请续费' : s.remainingHours<=3 ? '剩余课时不足，及时续费' : '状态正常，继续加油';
     return `<div class="p-card" data-action="go-student" data-id="${s.id}">
       <span class="p-avatar" style="background:${avColor(s.name)}">${esc(initial(s.name))}</span>
       <div class="p-name">${esc(s.name)}</div>
       <div class="p-hours">剩余 ${s.remainingHours} 课时</div>
-      <div class="p-class">${esc(cName(s.classIds?.[0]))}</div>
+      <div class="p-class">${esc((s.subjects||[]).join('、')||'—')}</div>
       <div class="p-tip">💡 ${tip}</div>
     </div>`; }).join('')}</div>` : emptyBox('还没有学生，去「学生管理」添加');
 
@@ -186,7 +194,7 @@ function renderHome(){
       <div class="p-name">${esc(t.name)}</div>
       <div class="p-hours">累计 ${hours} 课时</div>
       <div class="p-class">${esc((t.subjects||[]).join(' · ')||'—')}</div>
-      <div class="p-tip">💡 薪酬 ${money(t.hourlyRate||0)}/课时</div>
+      <div class="p-tip">💡 课时费 ${money(rateOf(t)||0)}/课时</div>
     </div>`; }).join('')}</div>` : emptyBox('还没有老师，去「老师管理」添加');
 
   return `
@@ -322,11 +330,11 @@ function renderStudents(){
 function renderRoster(){
   const st = coll.students();
   const list = st.length ? `<div class="list" id="stuList">${st.map(s=>`
-    <button class="list-item" data-action="go-student" data-id="${s.id}" data-searchable="${esc(s.name)} ${esc((s.tags||[]).join(' '))} ${esc(s.grade)} ${esc((s.subjects||[]).join(' '))}">
+    <button class="list-item" data-action="go-student" data-id="${s.id}" data-searchable="${esc(s.name)} ${esc((s.subjects||[]).join(' '))}">
       ${avatarHtml(s.id, s.name)}
       <span class="li-main">
-        <span class="li-title">${esc(s.name)} ${tagChips(s.tags)}</span>
-        <span class="li-sub">${esc(s.grade)} · ${esc((s.subjects||[]).join('、'))} · ${esc(cName(s.classIds?.[0]))}</span>
+        <span class="li-title">${esc(s.name)}</span>
+        <span class="li-sub">${esc((s.subjects||[]).join('、')||'—')} · ${esc(s.phone||'')}</span>
       </span>
       <span class="li-side"><div class="big blue">${s.remainingHours}</div><div class="small">剩余课时</div></span>
     </button>`).join('')}</div>` : emptyBox('暂无学生，点击右上角添加');
@@ -342,9 +350,9 @@ function renderConsume(){
   return `<p class="small muted mb-12">选择学生进行手动消课：</p>
     ${searchBar('#consumeList')}
     ${st.length ? `<div class="list" id="consumeList">${st.map(s=>`
-      <button class="list-item" data-action="consume-student" data-id="${s.id}" data-searchable="${esc(s.name)} ${esc(s.grade)}">
+      <button class="list-item" data-action="consume-student" data-id="${s.id}" data-searchable="${esc(s.name)} ${esc((s.subjects||[]).join(' '))}">
         ${avatarHtml(s.id, s.name)}
-        <span class="li-main"><span class="li-title">${esc(s.name)}</span><span class="li-sub">${esc(s.grade)} · 剩余 ${s.remainingHours} 课时</span></span>
+        <span class="li-main"><span class="li-title">${esc(s.name)}</span><span class="li-sub">${esc((s.subjects||[]).join('、')||'—')} · 剩余 ${s.remainingHours} 课时</span></span>
         <span class="li-side">${ICONS.chev}</span>
       </button>`).join('')}</div>` : emptyBox('暂无学生')}`;
 }
@@ -426,7 +434,7 @@ function renderClassEnd(){
 function renderSchedule(){
   const tabs = [{k:'multi',label:'多维课表'},{k:'arrange',label:'排课调课'}];
   return `<div class="page">
-    <div class="page-head"><div class="page-title">课表</div><div class="page-sub">多维课表 · 排课调课</div></div>
+    <div class="page-head"><div class="page-title">课表</div><div class="page-sub">学生课表 · 教师课表 · 排课</div></div>
     ${tabBar(tabs, S.tab, 'schedule')}
     ${S.tab==='arrange' ? renderArrange() : renderMultiSchedule()}
   </div>`;
@@ -434,7 +442,7 @@ function renderSchedule(){
 
 function renderMultiSchedule(){
   if (S.sel) return renderSchedulePerson();
-  return `${segBar([{k:'student',label:'学生课表'},{k:'teacher',label:'教师课表'},{k:'class',label:'班级课表'}], S.view, 'set-view')}
+  return `${segBar([{k:'student',label:'学生课表'},{k:'teacher',label:'教师课表'}], S.view, 'set-view')}
     ${searchBar('#schList')}
     ${renderScheduleList()}`;
 }
@@ -446,8 +454,8 @@ function renderScheduleList(){
     const st = coll.students();
     html = st.length ? `<div class="list" id="schList">${st.map(s=>{
       const n = sessions.filter(x=>x.studentId===s.id).length;
-      return `<button class="list-item" data-action="sel-person" data-kind="student" data-id="${s.id}" data-searchable="${esc(s.name)} ${esc(s.grade)}">
-        ${avatarHtml(s.id, s.name)}<span class="li-main"><span class="li-title">${esc(s.name)}</span><span class="li-sub">${esc(s.grade)} · 排课 ${n} 节</span></span><span class="li-side"><div class="big blue">${s.remainingHours}</div><div class="small">剩余课时</div></span>
+      return `<button class="list-item" data-action="sel-person" data-kind="student" data-id="${s.id}" data-searchable="${esc(s.name)} ${esc((s.subjects||[]).join(' '))}">
+        ${avatarHtml(s.id, s.name)}<span class="li-main"><span class="li-title">${esc(s.name)}</span><span class="li-sub">${esc((s.subjects||[]).join('、')||'—')} · 排课 ${n} 节</span></span><span class="li-side"><div class="big blue">${s.remainingHours}</div><div class="small">剩余课时</div></span>
       </button>`; }).join('')}</div>` : emptyBox('暂无学生');
   } else if (S.view==='teacher'){
     const tc = coll.teachers();
@@ -456,13 +464,6 @@ function renderScheduleList(){
       return `<button class="list-item" data-action="sel-person" data-kind="teacher" data-id="${t.id}" data-searchable="${esc(t.name)} ${esc((t.subjects||[]).join(' '))}">
         <span class="li-avatar" style="background:${avColor(t.name,AV_COLORS_T)}">${esc(initial(t.name))}</span><span class="li-main"><span class="li-title">${esc(t.name)}</span><span class="li-sub">${esc((t.subjects||[]).join('、'))} · 排课 ${n} 节</span></span><span class="li-side">${ICONS.chev}</span>
       </button>`; }).join('')}</div>` : emptyBox('暂无老师');
-  } else {
-    const cl = coll.classes();
-    html = cl.length ? `<div class="list" id="schList">${cl.map(c=>{
-      const n = sessions.filter(x=>x.classId===c.id).length;
-      return `<button class="list-item" data-action="sel-person" data-kind="class" data-id="${c.id}" data-searchable="${esc(c.name)} ${esc(c.subject)}">
-        <span class="li-avatar" style="background:${avColor(c.name)}">${esc(c.name[0])}</span><span class="li-main"><span class="li-title">${esc(c.name)}</span><span class="li-sub">${esc(c.subject)} · ${esc(c.schedule||'')}</span></span><span class="li-side"><div class="big blue">${n}</div><div class="small">排课</div></span>
-      </button>`; }).join('')}</div>` : emptyBox('暂无班级');
   }
   return html;
 }
@@ -470,9 +471,8 @@ function renderScheduleList(){
 function renderSchedulePerson(){
   const k = S.sel.kind, id = S.sel.id;
   let name='', sub='', color='#0033A0', sessions=[];
-  if (k==='student'){ const s=studentById(id); if(!s){S.sel=null; return '';} name=s.name; sub=s.grade+' · 剩余 '+s.remainingHours+' 课时'; color=avColor(s.name); sessions=coll.sessions().filter(x=>x.studentId===id); }
-  else if (k==='teacher'){ const t=teacherById(id); if(!t){S.sel=null; return '';} name=t.name; sub=(t.subjects||[]).join('、'); color=avColor(t.name,AV_COLORS_T); sessions=coll.sessions().filter(x=>x.teacherId===id); }
-  else { const c=classById(id); if(!c){S.sel=null; return '';} name=c.name; sub=c.subject+' · '+c.schedule; color=avColor(c.name); sessions=coll.sessions().filter(x=>x.classId===id); }
+  if (k==='student'){ const s=studentById(id); if(!s){S.sel=null; return '';} name=s.name; sub=(s.subjects||[]).join('、')+' · 剩余 '+s.remainingHours+' 课时'; color=avColor(s.name); sessions=coll.sessions().filter(x=>x.studentId===id); }
+  else { const t=teacherById(id); if(!t){S.sel=null; return '';} name=t.name; sub=(t.subjects||[]).join('、'); color=avColor(t.name,AV_COLORS_T); sessions=coll.sessions().filter(x=>x.teacherId===id); }
   sessions.sort((a,b)=>a.date.localeCompare(b.date));
   const totalH = sessions.filter(x=>x.status!=='已取消').length;
   return `${backRow('返回课表', 'clear-sel')}
@@ -486,7 +486,7 @@ function renderSchedulePerson(){
     ${sessions.length ? `<div class="list">${sessions.map(x=>`
       <div class="list-item">
         <span class="li-main"><span class="li-title">${esc(x.title||'')} ${tagChips([x.type, x.status])}</span>
-        <span class="li-sub">${x.date} ${esc(x.startTime||'')}-${esc(x.endTime||'')} · ${tName(x.teacherId)}</span></span>
+        <span class="li-sub">${x.date} ${esc(x.startTime||'')}-${esc(x.endTime||'')} · 学生${esc(sName(x.studentId))} · ${tName(x.teacherId)}</span></span>
         <span class="li-side" data-action="del-session" data-id="${x.id}" style="color:var(--ink-3)">${ICONS.trash}</span>
       </div>`).join('')}</div>` : emptyBox('暂无排课')}
     </div>`;
@@ -518,7 +518,7 @@ function renderHoursStat(kind){
   const rows = (kind==='student' ? coll.students() : coll.teachers()).map(p=>{
     const mine = scope.filter(x=> kind==='student' ? x.studentId===p.id : x.teacherId===p.id);
     const h = sum(mine,x=>x.hours), a = sum(mine,x=>x.amount);
-    const meta = kind==='student' ? (p.grade||'') : ((p.subjects||[]).join('、')||'');
+    const meta = (p.subjects||[]).join('、') || '';
     return `<div class="rec"><div class="rec-main"><div class="rec-name">${esc(p.name)}</div><div class="rec-meta">${esc(meta)} · ${kind==='student'?'消课':'授课'} ${h} 课时</div></div><div class="rec-val blue">${money(a)}</div></div>`;
   }).join('');
   return `${segBar([{k:'day',label:'日'},{k:'week',label:'周'},{k:'month',label:'月'},{k:'all',label:'全部'}], S.statPeriod, 'set-stat')}
@@ -604,11 +604,11 @@ function renderFeedback(){
    老师管理
    ============================================================ */
 function renderTeachers(){
-  const tabs = [{k:'roster',label:'师资档案'},{k:'pay',label:'课时薪酬'},{k:'eval',label:'教学评估'},{k:'stat',label:'课时统计'}];
+  const tabs = [{k:'roster',label:'师资档案'},{k:'pay',label:'课时薪酬'},{k:'stat',label:'课时统计'}];
   return `<div class="page">
-    <div class="page-head"><div class="page-title">老师管理</div><div class="page-sub">档案 · 薪酬 · 评估 · 课时统计</div></div>
+    <div class="page-head"><div class="page-title">老师管理</div><div class="page-sub">档案 · 薪酬 · 课时统计</div></div>
     ${tabBar(tabs, S.tab, 'teachers')}
-    ${S.tab==='pay' ? renderTeacherPay() : S.tab==='eval' ? renderTeacherEval() : S.tab==='stat' ? renderHoursStat('teacher') : renderTeacherRoster()}
+    ${S.tab==='pay' ? renderTeacherPay() : S.tab==='stat' ? renderHoursStat('teacher') : renderTeacherRoster()}
   </div>`;
 }
 
@@ -616,10 +616,10 @@ function renderTeacherRoster(){
   const tc = coll.teachers();
   return `<div class="row gap-8 mb-12"><button class="btn primary block" data-action="add-teacher">${ICONS.plus}添加老师</button></div>
     ${tc.length ? `<div class="list" id="teaList">${tc.map(t=>`
-      <button class="list-item" data-action="go-teacher" data-id="${t.id}" data-searchable="${esc(t.name)} ${esc((t.subjects||[]).join(' '))} ${esc(t.status)}">
+      <button class="list-item" data-action="go-teacher" data-id="${t.id}" data-searchable="${esc(t.name)} ${esc((t.subjects||[]).join(' '))}">
         <span class="li-avatar" style="background:${avColor(t.name,AV_COLORS_T)}">${esc(initial(t.name))}</span>
-        <span class="li-main"><span class="li-title">${esc(t.name)} ${tagChips([t.status])}</span>
-        <span class="li-sub">${esc((t.subjects||[]).join('、'))} · 教龄 ${t.teachYears} 年</span></span>
+        <span class="li-main"><span class="li-title">${esc(t.name)}</span>
+        <span class="li-sub">${esc((t.subjects||[]).join('、')||'—')} · ${money(rateOf(t)||0)}/课时</span></span>
         <span class="li-side">${ICONS.chev}</span>
       </button>`).join('')}</div>` : emptyBox('暂无老师')}`;
 }
@@ -629,7 +629,7 @@ function renderTeacherPay(){
   return `${searchBar('#payList')}<div class="list" id="payList">${tc.map(t=>{
     const mine = consumes.filter(c=>c.teacherId===t.id);
     const hours = sum(mine, x=>x.hours);
-    const expect = Math.round(hours * (t.hourlyRate||0));
+    const expect = Math.round(expectedPay(t));
     const paid = sum(coll.salaries().filter(s=>s.teacherId===t.id && s.status==='已结算'), x=>x.amount);
     const pct = expect>0 ? Math.min(100, Math.round(paid/expect*100)) : 0;
     return `<div class="list-item" data-searchable="${esc(t.name)}">
@@ -639,21 +639,6 @@ function renderTeacherPay(){
       <span class="mt-8" style="display:block"><span class="progress"><span class="progress-fill" style="width:${pct}%"></span></span><span class="small muted">结算进度 ${pct}%</span></span></span>
       <span class="li-side"><button class="btn sm ghost" data-action="pay-salary" data-id="${t.id}">发放薪酬</button></span>
     </div>`; }).join('')}</div>`;
-}
-
-function renderTeacherEval(){
-  const tc = coll.teachers(), evs = coll.evaluations();
-  return `<div class="row gap-8 mb-12"><button class="btn primary block" data-action="add-eval">${ICONS.plus}手动添加评估</button></div>
-    ${tc.length ? `<div class="list">${tc.map(t=>{
-      const mine = evs.filter(e=>e.teacherId===t.id);
-      const avg = mine.length ? (sum(mine,e=>e.rating)/mine.length) : null;
-      return `<div class="list-item">
-        <span class="li-avatar" style="background:${avColor(t.name,AV_COLORS_T)}">${esc(initial(t.name))}</span>
-        <span class="li-main"><span class="li-title">${esc(t.name)}</span>
-        <span class="li-sub">评估 ${mine.length} 次 · ${avg!=null ? '平均 '+avg.toFixed(1)+' 分' : '暂无评估'}</span>
-        <span class="li-sub">${avg!=null ? '★'.repeat(Math.round(avg))+'☆'.repeat(5-Math.round(avg)) : '—'}</span></span>
-        <span class="li-side"><button class="btn sm ghost" data-action="add-eval" data-id="${t.id}">添加</button></span>
-      </div>`; }).join('')}</div>` : emptyBox('暂无老师，请先在师资档案添加')}`;
 }
 
 /* ============================================================
@@ -742,19 +727,17 @@ function renderStudentDetail(id){
   const fees = coll.fees().filter(f=>f.studentId===id);
   const totalConsume = sum(consumes, x=>x.hours), totalRecharge = sum(recharges, x=>x.hours);
   const totalPaid = sum(recharges, x=>x.amount) + sum(fees.filter(f=>['报名','缴费','续费'].includes(f.type)), x=>x.amount);
-  const cls = studentClasses(s).map(c=>c.name).join('、') || '未分班';
   return `<div class="page">
     ${backRow('返回学生管理', 'back')}
     <div class="card">
       <div class="row gap-12">
         <span class="li-avatar" style="width:58px;height:58px;font-size:24px;background:${avColor(s.name)}">${esc(initial(s.name))}</span>
-        <div class="flex-1"><div class="page-title" style="font-size:20px">${esc(s.name)} ${tagChips(s.tags)}</div>
-        <div class="page-sub">${esc(s.grade)} · ${esc((s.subjects||[]).join('、'))} · ${esc(cls)}</div></div>
+        <div class="flex-1"><div class="page-title" style="font-size:20px">${esc(s.name)}</div>
+        <div class="page-sub">${esc((s.subjects||[]).join('、')||'—')} · ${esc(s.phone||'')}</div></div>
       </div>
       <div class="row gap-8 mt-12">
         <button class="btn sm primary" data-action="consume-student" data-id="${s.id}">消课</button>
         <button class="btn sm ghost" data-action="recharge-student" data-id="${s.id}">充值</button>
-        <button class="btn sm light" data-action="edit-student" data-id="${s.id}">${ICONS.edit}编辑</button>
         <button class="btn sm danger" data-action="del-student" data-id="${s.id}">${ICONS.trash}</button>
       </div>
     </div>
@@ -766,13 +749,13 @@ function renderStudentDetail(id){
       <div class="stat"><div class="stat-label">累计缴费</div><div class="stat-num green">${money(totalPaid)}</div></div>
     </div>
 
-    <div class="card"><div class="card-title mb-12"><span class="dot"></span>基础信息</div>
-      ${kvRow('年级', s.grade)}${kvRow('科目', (s.subjects||[]).join('、'))}${kvRow('联系电话', s.phone)}${kvRow('家长', s.parentName)}${kvRow('家长电话', s.parentPhone)}${kvRow('报名日期', s.enrollDate)}${kvRow('备注', s.note||'—')}
+    <div class="card"><div class="card-title mb-12"><span class="dot"></span>档案信息（可直接修改）</div>
+      ${studentForm(s)}
     </div>
 
     <div class="card"><div class="card-title mb-12"><span class="dot"></span>消课记录（${consumes.length}）</div>
       ${consumes.length ? `<div class="list">${consumes.slice().sort((a,b)=>b.date.localeCompare(a.date)).map(c=>`
-        <div class="rec"><div class="rec-main"><div class="rec-name">${tName(c.teacherId)} · ${cName(c.classId)}</div><div class="rec-meta">${c.date} · 单价 ${money(c.unitPrice)}</div></div><div class="rec-val neg">-${c.hours}课时 ${money(c.amount)}</div></div>`).join('')}</div>` : '<p class="small muted">暂无消课记录</p>'}
+        <div class="rec"><div class="rec-main"><div class="rec-name">${tName(c.teacherId)}</div><div class="rec-meta">${c.date} · 单价 ${money(c.unitPrice)}</div></div><div class="rec-val neg">-${c.hours}课时 ${money(c.amount)}</div></div>`).join('')}</div>` : '<p class="small muted">暂无消课记录</p>'}
     </div>
 
     <div class="card"><div class="card-title mb-12"><span class="dot"></span>充值记录（${recharges.length}）</div>
@@ -791,7 +774,7 @@ function renderTeacherDetail(id){
   const t = teacherById(id); if(!t){ S.detail=null; return ''; }
   const consumes = coll.consumptions().filter(c=>c.teacherId===id);
   const hours = sum(consumes, x=>x.hours);
-  const expect = Math.round(hours * (t.hourlyRate||0));
+  const expect = Math.round(expectedPay(t));
   const salaries = coll.salaries().filter(s=>s.teacherId===id);
   const paid = sum(salaries.filter(s=>s.status==='已结算'), x=>x.amount);
   const stus = [...new Set(consumes.map(c=>c.studentId))];
@@ -800,11 +783,11 @@ function renderTeacherDetail(id){
     <div class="card">
       <div class="row gap-12">
         <span class="li-avatar" style="width:58px;height:58px;font-size:24px;background:${avColor(t.name,AV_COLORS_T)}">${esc(initial(t.name))}</span>
-        <div class="flex-1"><div class="page-title" style="font-size:20px">${esc(t.name)} ${tagChips([t.status])}</div>
-        <div class="page-sub">${esc((t.subjects||[]).join('、'))} · 教龄 ${t.teachYears} 年</div></div>
+        <div class="flex-1"><div class="page-title" style="font-size:20px">${esc(t.name)}</div>
+        <div class="page-sub">${esc((t.subjects||[]).join('、')||'—')} · ${money(rateOf(t)||0)}/课时</div></div>
       </div>
       <div class="row gap-8 mt-12">
-        <button class="btn sm ghost" data-action="edit-teacher" data-id="${t.id}">${ICONS.edit}编辑</button>
+        <button class="btn sm ghost" data-action="pay-salary" data-id="${t.id}">${ICONS.wallet}发放薪酬</button>
         <button class="btn sm danger" data-action="del-teacher" data-id="${t.id}">${ICONS.trash}</button>
       </div>
     </div>
@@ -812,10 +795,10 @@ function renderTeacherDetail(id){
       <div class="stat"><div class="stat-label">授课课时</div><div class="stat-num blue">${hours}</div></div>
       <div class="stat"><div class="stat-label">应发薪酬</div><div class="stat-num">${money(expect)}</div></div>
       <div class="stat"><div class="stat-label">已结算</div><div class="stat-num green">${money(paid)}</div></div>
-      <div class="stat"><div class="stat-label">课时薪酬单价</div><div class="stat-num">${money(t.hourlyRate||0)}</div></div>
+      <div class="stat"><div class="stat-label">课时费</div><div class="stat-num">${money(rateOf(t)||0)}</div></div>
     </div>
-    <div class="card"><div class="card-title mb-12"><span class="dot"></span>师资档案</div>
-      ${kvRow('授课科目', (t.subjects||[]).join('、'))}${kvRow('资质证书', (t.certs||[]).join('、'))}${kvRow('教龄', (t.teachYears||0)+' 年')}${kvRow('教学经历', t.experience||'—')}${kvRow('入职日期', t.hireDate||'—')}
+    <div class="card"><div class="card-title mb-12"><span class="dot"></span>师资档案（可直接修改）</div>
+      ${teacherForm(t)}
     </div>
     <div class="card"><div class="card-title mb-12"><span class="dot"></span>课时薪酬结算</div>
       <div class="small muted mb-12">对应学生：${stus.map(sName).join('、')||'—'}</div>
@@ -907,12 +890,7 @@ function studentForm(s){
   s = s || {};
   return `<form data-form="student" data-id="${s.id||''}">
     <div class="field"><label class="field-label">姓名 <span class="req">*</span></label><input class="input" name="name" required value="${esc(s.name||'')}"></div>
-    <div class="input-row">
-      <div class="field"><label class="field-label">性别</label><select class="select" name="gender"><option ${s.gender==='女'?'selected':''}>男</option><option ${s.gender==='女'?'selected':''}>女</option></select></div>
-      <div class="field"><label class="field-label">年级</label><select class="select" name="grade">${GRADES.map(g=>`<option ${s.grade===g?'selected':''}>${g}</option>`).join('')}</select></div>
-    </div>
-    <div class="field"><label class="field-label">科目</label>${chipSelect('subjects', SUBJECTS, s.subjects||[])}</div>
-    <div class="field"><label class="field-label">标签分组</label>${chipSelect('tags', STU_TAGS, s.tags||[])}</div>
+    <div class="field"><label class="field-label">科目（手动输入，逗号分隔）</label><input class="input" name="subjects" placeholder="如：数学、英语" value="${esc((s.subjects||[]).join(','))}"></div>
     <div class="input-row">
       <div class="field"><label class="field-label">剩余课时</label><input class="input" name="remainingHours" type="number" step="0.5" min="0" value="${s.remainingHours??0}"></div>
       <div class="field"><label class="field-label">联系电话</label><input class="input" name="phone" value="${esc(s.phone||'')}"></div>
@@ -921,7 +899,6 @@ function studentForm(s){
       <div class="field"><label class="field-label">家长姓名</label><input class="input" name="parentName" value="${esc(s.parentName||'')}"></div>
       <div class="field"><label class="field-label">家长电话</label><input class="input" name="parentPhone" value="${esc(s.parentPhone||'')}"></div>
     </div>
-    <div class="field"><label class="field-label">所属班级</label>${chipSelect('classIds', coll.classes().map(c=>c.name), studentClasses(s).map(c=>c.name))}</div>
     <div class="field"><label class="field-label">备注</label><textarea class="textarea" name="note">${esc(s.note||'')}</textarea></div>
     <button class="btn primary block" type="submit">保存</button>
   </form>`;
@@ -935,21 +912,25 @@ function chipSelect(name, options, selected=[]){
 }
 
 /* ---------------- 老师表单 ---------------- */
+function rateRow(r){
+  r = r || {};
+  return `<div class="rate-row">
+    <input class="input" name="rateSubject" placeholder="科目（如：数学）" value="${esc(r.subject||'')}">
+    <input class="input" name="rateAmount" type="number" min="0" step="0.5" placeholder="元/课时" value="${r.rate||''}">
+    <button type="button" class="icon-btn" data-action="del-rate-row" title="删除">${ICONS.trash}</button>
+  </div>`;
+}
+
 function teacherForm(t){
   t = t || {};
+  const rates = (t.rates && t.rates.length) ? t.rates : [{}];
   return `<form data-form="teacher" data-id="${t.id||''}">
     <div class="field"><label class="field-label">姓名 <span class="req">*</span></label><input class="input" name="name" required value="${esc(t.name||'')}"></div>
-    <div class="input-row">
-      <div class="field"><label class="field-label">性别</label><select class="select" name="gender"><option ${t.gender==='女'?'selected':''}>男</option><option ${t.gender==='女'?'selected':''}>女</option></select></div>
-      <div class="field"><label class="field-label">状态</label><select class="select" name="status"><option ${t.status==='离职'?'selected':''}>在职</option><option ${t.status==='离职'?'selected':''}>离职</option></select></div>
+    <div class="field"><label class="field-label">授课科目（手动输入，逗号分隔）</label><input class="input" name="subjects" placeholder="如：数学、英语" value="${esc((t.subjects||[]).join(','))}"></div>
+    <div class="field"><label class="field-label">课时费（每科目单价，可添加多行）</label>
+      <div id="rateRows">${rates.map(rateRow).join('')}</div>
+      <button type="button" class="btn sm ghost mt-8" data-action="add-rate-row">${ICONS.plus}添加课时费</button>
     </div>
-    <div class="field"><label class="field-label">授课科目</label>${chipSelect('subjects', SUBJECTS, t.subjects||[])}</div>
-    <div class="field"><label class="field-label">资质证书（逗号分隔）</label><input class="input" name="certs" value="${esc((t.certs||[]).join(','))}"></div>
-    <div class="input-row">
-      <div class="field"><label class="field-label">教龄（年）</label><input class="input" name="teachYears" type="number" min="0" value="${t.teachYears||0}"></div>
-      <div class="field"><label class="field-label">课时薪酬单价（元/课时）</label><input class="input" name="hourlyRate" type="number" min="0" value="${t.hourlyRate||0}"></div>
-    </div>
-    <div class="field"><label class="field-label">教学经历</label><textarea class="textarea" name="experience">${esc(t.experience||'')}</textarea></div>
     <button class="btn primary block" type="submit">保存</button>
   </form>`;
 }
@@ -975,16 +956,13 @@ function classForm(c){
 
 /* ---------------- 消课 / 充值 / 工资 / 费用 ---------------- */
 function consumeForm(s){
-  const cls = studentClasses(s);
-  const price = cls[0]?.pricePerHour || 150;
   return `<form data-form="consume" data-id="${s.id}">
     <p class="small muted mb-12">为「${esc(s.name)}」消课，当前剩余 ${s.remainingHours} 课时。</p>
     <div class="input-row">
       <div class="field"><label class="field-label">消课课时 <span class="req">*</span></label><input class="input" name="hours" type="number" step="0.5" min="0.5" required value="2"></div>
-      <div class="field"><label class="field-label">课时单价</label><input class="input" name="unitPrice" type="number" min="0" value="${price}"></div>
+      <div class="field"><label class="field-label">课时单价</label><input class="input" name="unitPrice" type="number" min="0" value="150"></div>
     </div>
-    <div class="field"><label class="field-label">对应老师</label><select class="select" name="teacherId"><option value="">未指定</option>${coll.teachers().map(t=>`<option value="${t.id}" ${cls[0]?.teacherId===t.id?'selected':''}>${esc(t.name)}</option>`).join('')}</select></div>
-    <div class="field"><label class="field-label">班级</label><select class="select" name="classId"><option value="">未指定</option>${coll.classes().map(c=>`<option value="${c.id}" ${s.classIds?.[0]===c.id?'selected':''}>${esc(c.name)}</option>`).join('')}</select></div>
+    <div class="field"><label class="field-label">对应老师</label><select class="select" name="teacherId"><option value="">未指定</option>${coll.teachers().map(t=>`<option value="${t.id}">${esc(t.name)}</option>`).join('')}</select></div>
     <button class="btn primary block" type="submit">确认消课</button>
   </form>`;
 }
@@ -1005,7 +983,7 @@ function salaryForm(t){
   t = t || {};
   const consumes = coll.consumptions().filter(c=>c.teacherId===t.id);
   const hours = sum(consumes, x=>x.hours);
-  const expect = Math.round(hours * (t.hourlyRate||0));
+  const expect = Math.round(expectedPay(t));
   const paid = sum(coll.salaries().filter(s=>s.teacherId===t.id && s.status==='已结算'), x=>x.amount);
   return `<form data-form="salary" data-id="${t.id}">
     <p class="small muted mb-12">为「${esc(t.name)}」发放工资，待发 ${money(expect-paid)}。</p>
@@ -1083,26 +1061,13 @@ function sessionForm(){
       <div class="field"><label class="field-label">学生 <span class="req">*</span></label><select class="select" name="studentId" required>${coll.students().map(s=>`<option value="${s.id}">${esc(s.name)}</option>`).join('')}</select></div>
       <div class="field"><label class="field-label">老师</label><select class="select" name="teacherId"><option value="">未指定</option>${coll.teachers().map(t=>`<option value="${t.id}">${esc(t.name)}</option>`).join('')}</select></div>
     </div>
-    <div class="input-row">
-      <div class="field"><label class="field-label">班级</label><select class="select" name="classId"><option value="">未指定</option>${coll.classes().map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('')}</select></div>
-      <div class="field"><label class="field-label">类型</label><select class="select" name="type">${SESSION_TYPES.map(t=>`<option>${t}</option>`).join('')}</select></div>
-    </div>
+    <div class="field"><label class="field-label">类型</label><select class="select" name="type">${SESSION_TYPES.map(t=>`<option>${t}</option>`).join('')}</select></div>
     <div class="field"><label class="field-label">上课日期 <span class="req">*</span></label><input class="input" name="date" type="date" required value="${today()}"></div>
     <div class="input-row">
       <div class="field"><label class="field-label">开始时间</label><input class="input" name="startTime" type="time" value="09:00"></div>
       <div class="field"><label class="field-label">结束时间</label><input class="input" name="endTime" type="time" value="10:30"></div>
     </div>
     <button class="btn primary block" type="submit">保存排课</button>
-  </form>`;
-}
-
-function evalForm(teacherId){
-  return `<form data-form="eval">
-    <div class="field"><label class="field-label">老师 <span class="req">*</span></label><select class="select" name="teacherId">${coll.teachers().map(t=>`<option value="${t.id}" ${t.id===teacherId?'selected':''}>${esc(t.name)}</option>`).join('')}</select></div>
-    <div class="field"><label class="field-label">满意度评分（1-5）<span class="req">*</span></label><input class="input" name="rating" type="number" min="1" max="5" step="0.5" required value="5"></div>
-    <div class="field"><label class="field-label">评价内容</label><textarea class="textarea" name="comment" placeholder="如：家长反馈课堂氛围好、讲解清晰…"></textarea></div>
-    <div class="field"><label class="field-label">评估日期</label><input class="input" name="date" type="date" value="${today()}"></div>
-    <button class="btn primary block" type="submit">保存评估</button>
   </form>`;
 }
 
@@ -1113,11 +1078,10 @@ const FORMS = {
   student(f){
     const id = f.dataset.id, arr = coll.students();
     const data = {
-      name: val(f,'name'), gender: val(f,'gender'), grade: val(f,'grade'),
-      subjects: toArr(val(f,'subjects')), tags: toArr(val(f,'tags')),
+      name: val(f,'name'),
+      subjects: toArr(val(f,'subjects')),
       remainingHours: Number(val(f,'remainingHours'))||0, phone: val(f,'phone'),
       parentName: val(f,'parentName'), parentPhone: val(f,'parentPhone'),
-      classIds: coll.classes().filter(c=>toArr(val(f,'classIds')).includes(c.name)).map(c=>c.id),
       note: val(f,'note'),
     };
     if (id){ const s = arr.find(x=>x.id===id); Object.assign(s, data); saveColl('students', arr); }
@@ -1127,10 +1091,13 @@ const FORMS = {
   teacher(f){
     const id = f.dataset.id, arr = coll.teachers();
     const data = {
-      name: val(f,'name'), gender: val(f,'gender'), status: val(f,'status'),
-      subjects: toArr(val(f,'subjects')), certs: toArr(val(f,'certs')),
-      teachYears: Number(val(f,'teachYears'))||0, hourlyRate: Number(val(f,'hourlyRate'))||0,
-      experience: val(f,'experience'),
+      name: val(f,'name'),
+      subjects: toArr(val(f,'subjects')),
+      rates: $$('.rate-row', f).map(row=>{
+        const subject = ($('input[name=rateSubject]', row)?.value || '').trim();
+        const rate = Number($('input[name=rateAmount]', row)?.value)||0;
+        return { subject, rate };
+      }).filter(r=>r.subject && r.rate>0),
     };
     if (id){ const t = arr.find(x=>x.id===id); Object.assign(t, data); saveColl('teachers', arr); }
     else { arr.push(Object.assign({id:uid(), hireDate:today()}, data)); saveColl('teachers', arr); }
@@ -1152,7 +1119,7 @@ const FORMS = {
     const id = f.dataset.id, s = studentById(id);
     const hours = Number(val(f,'hours'))||0, unitPrice = Number(val(f,'unitPrice'))||0;
     if (hours > s.remainingHours) { toast('课时不足，剩余 '+s.remainingHours+' 课时', 'warn'); return; }
-    coll.consumptions().push({id:uid(), studentId:id, teacherId:val(f,'teacherId'), classId:val(f,'classId'), hours, unitPrice, amount:Math.round(hours*unitPrice), date:today(), note:''});
+    coll.consumptions().push({id:uid(), studentId:id, teacherId:val(f,'teacherId'), classId:'', hours, unitPrice, amount:Math.round(hours*unitPrice), date:today(), note:''});
     saveColl('consumptions', coll.consumptions());
     s.remainingHours -= hours; const arr = coll.students(); Object.assign(arr.find(x=>x.id===id), s); saveColl('students', arr);
     closeModal(); toast('消课成功 -'+hours+' 课时'); render();
@@ -1198,16 +1165,9 @@ const FORMS = {
   },
   session(f){
     const st = studentById(val(f,'studentId'));
-    coll.sessions().push({id:uid(), studentId:val(f,'studentId'), teacherId:val(f,'teacherId')||(st?.classIds?.length?classById(st.classIds[0])?.teacherId:''), classId:val(f,'classId'), date:val(f,'date'), startTime:val(f,'startTime'), endTime:val(f,'endTime'), type:val(f,'type'), status:'待上', title:(st?.classIds?.length?cName(st.classIds[0]):'')});
+    coll.sessions().push({id:uid(), studentId:val(f,'studentId'), teacherId:val(f,'teacherId'), classId:'', date:val(f,'date'), startTime:val(f,'startTime'), endTime:val(f,'endTime'), type:val(f,'type'), status:'待上', title:sName(val(f,'studentId'))});
     saveColl('sessions', coll.sessions());
     closeModal(); toast('排课已保存'); render();
-  },
-  eval(f){
-    const teacherId = val(f,'teacherId');
-    if (!teacherId){ toast('请选择老师', 'warn'); return; }
-    coll.evaluations().push({id:uid(), teacherId, rating:Number(val(f,'rating'))||5, comment:val(f,'comment'), date:val(f,'date')||today()});
-    saveColl('evaluations', coll.evaluations());
-    closeModal(); toast('评估已添加'); render();
   },
 };
 
@@ -1242,8 +1202,8 @@ const ACTIONS = {
   'edit-teacher'(el){ const t=teacherById(el.dataset.id); openModal('编辑老师', teacherForm(t)); },
   'del-teacher': async function(el){ if(!(await confirmDel('确定删除该老师？'))) return; saveColl('teachers', coll.teachers().filter(x=>x.id!==el.dataset.id)); toast('已删除'); S.detail=null; render(); },
   'pay-salary'(el){ const t=teacherById(el.dataset.id); openModal('发放工资', salaryForm(t)); },
-  'add-eval'(el){ openModal('添加教学评估', evalForm(el.dataset.id)); },
-  'del-eval': async function(el){ if(!(await confirmDel('删除该教学评估？'))) return; saveColl('evaluations', coll.evaluations().filter(x=>x.id!==el.dataset.id)); toast('已删除'); render(); },
+  'add-rate-row'(){ const box = $('#rateRows'); if (box) box.insertAdjacentHTML('beforeend', rateRow()); },
+  'del-rate-row'(el){ el.closest('.rate-row')?.remove(); },
 
   'add-class'(){ openModal('新建班级', classForm()); },
   'edit-class'(el){ const c=classById(el.dataset.id); openModal('编辑班级', classForm(c)); },
@@ -1379,8 +1339,7 @@ function downloadText(filename, text){
 
 /* ---------------- 渲染函数映射 ---------------- */
 const RENDER = {
-  home: renderHome, students: renderStudents, teachers: renderTeachers, classes: renderClasses,
-  schedule: renderSchedule, import: renderImport,
+  home: renderHome, students: renderStudents, teachers: renderTeachers, schedule: renderSchedule,
 };
 
 function afterRender(){

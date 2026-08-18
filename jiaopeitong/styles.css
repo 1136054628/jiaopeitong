@@ -369,6 +369,22 @@ svg { display: block; }
 .text-right { text-align: right; }
 .text-center { text-align: center; }
 
+/* ============ 退回按钮（显目放大） ============ */
+.back-btn {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 12px 18px; border-radius: 14px; margin-bottom: 14px;
+  background: var(--blue); color: #fff;
+  font-size: 16px; font-weight: 700;
+  box-shadow: 0 3px 10px rgba(0,51,160,.22);
+}
+.back-btn:active { opacity: .88; }
+.back-btn svg { width: 24px; height: 24px; }
+
+/* ============ 课时费多行输入 ============ */
+.rate-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.rate-row .input:first-child { flex: 1; }
+.rate-row input[name="rateAmount"] { width: 108px; flex: none; }
+
 /* 桌面端预览居中 */
 @media (min-width: 560px) {
   body { background: #E9EDF5; padding: 24px 0; }
